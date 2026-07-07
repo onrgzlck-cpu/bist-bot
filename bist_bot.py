@@ -129,15 +129,17 @@ def komple_indikator_analizi(ticker):
     except:
         return None
 
-# 🔥 1. SİLİNDİ: TÜM HİSSELER SINIRSIZ ŞEKİLDE TARANIYOR
+# 🔥 İLK AÇILIŞTAKİ GÖRSEL YÜZDELİK DOLMA ÇUBUĞU (GERİ GELDİ)
 if st.session_state.tarama_sonuclari is not None:
     all_data = st.session_state.tarama_sonuclari
 else:
     ilk_veriler = []
-    # Sınırlandırma kaldırıldı, listedeki tüm hisseleri tek seferde tarar.
-    for h in TUM_HISSELER: 
+    st.write("🔄 Sistem ilk kez başlatılıyor, tüm listelendirmeler taranıyor...")
+    ana_pro_bar = st.progress(0)
+    for idx, h in enumerate(TUM_HISSELER):
         res = komple_indikator_analizi(h)
         if res: ilk_veriler.append(res)
+        ana_pro_bar.progress((idx + 1) / len(TUM_HISSELER))
     if ilk_veriler:
         all_data = pd.DataFrame(ilk_veriler)
     else:
@@ -168,7 +170,7 @@ if st.sidebar.button("🔄 Tüm Listeyi Sıfırdan Tara"):
     st.session_state.tarama_sonuclari = all_data
     st.rerun()
 
-# 🔥 2. SİLİNDİ: TELEGRAM ARTIK BUTONSUZ TAM OTOMATİK ÇALIŞIYOR
+# 📡 TELEGRAMA TAM OTOMATİK SİNYAL GÖNDERİMİ
 if "telegram_gonderilenler" not in st.session_state:
     st.session_state.telegram_gonderilenler = set()
 
@@ -176,7 +178,6 @@ if not all_data.empty and "Sinyal" in all_data.columns:
     keskinler = all_data[all_data["Sinyal"] == "KESKİN AL 🚀"]
     for _, row in keskinler.iterrows():
         hisse_kodu = row['Hisse']
-        # Aynı sinyali üst üste kanala tekrar fırlatıp spam yapmasın diye hafıza kontrolü
         if hisse_kodu not in st.session_state.telegram_gonderilenler:
             mesaj = (
                 f"🦅 *BIST PRO VIP AL SİNYALİ!*\n\n"
