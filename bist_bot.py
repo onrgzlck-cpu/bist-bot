@@ -19,6 +19,10 @@ TELEGRAM_CHAT_ID = "8767394835"
 # Önbellek Süresi (30 Dakika)
 OTOMATIK_YENILEME_SURESI = 1800 
 
+# 🔥 1. ADIM: SESSION STATE (HAFIZA) İLK KURULUMU (Hatanın kesin çözümü)
+if "tarama_sonuclari" not in st.session_state:
+    st.session_state.tarama_sonuclari = None
+
 def telegram_mesaj_gonder(mesaj):
     if TELEGRAM_TOKEN == "BURAYA_TOKENI_YAZIN" or TELEGRAM_CHAT_ID == "BURAYA_CHAT_ID_YAZIN":
         return False
@@ -40,7 +44,7 @@ def hisse_listesini_yukle():
 
 TUM_HISSELER = hisse_listesini_yukle()
 
-# 🧮 PROFESYONEL İNDİKATÖR MOTORU (TÜM LİSTEYİ HESAPLAR)
+# 🧮 PROFESYONEL İNDİKATÖR MOTORU
 @st.cache_data(ttl=OTOMATIK_YENILEME_SURESI)
 def komple_indikator_analizi(ticker):
     try:
@@ -54,13 +58,13 @@ def komple_indikator_analizi(ticker):
         volume = df['Volume'].astype(float)
         son_fiyat = float(close.iloc[-1])
         
-        # 1. RSI (14)
+        # RSI
         delta = close.diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rsi = float(100 - (100 / (1 + (gain / (loss + 1e-9)))).iloc[-1])
         
-        # 2. Ortalamalar (Hatanın düzeltildiği yer)
+        # Ortalamalar
         ema5 = float(close.ewm(span=5, adjust=False).mean().iloc[-1])
         ema12 = float(close.ewm(span=12, adjust=False).mean().iloc[-1])
         ema20 = float(close.ewm(span=20, adjust=False).mean().iloc[-1])
@@ -68,7 +72,7 @@ def komple_indikator_analizi(ticker):
         sma5 = float(close.rolling(window=5).mean().iloc[-1])
         sma20 = float(close.rolling(window=20).mean().iloc[-1])
         
-        # 3. ATR & Dinamik Fiyat Seviyeleri
+        # ATR & Dinamik Seviyeler
         tr = pd.concat([high - low, (high - close.shift()).abs(), (low - close.shift()).abs()], axis=1).max(axis=1)
         atr = float(tr.rolling(window=14).mean().iloc[-1])
         
@@ -76,7 +80,7 @@ def komple_indikator_analizi(ticker):
         kar_tutari = round(son_fiyat + (2.2 * atr), 2)
         cikis_tutari = round(son_fiyat - (1.5 * atr), 2)
         
-        # 4. OBV, Williams, CCI, MACD
+        # Diğer Göstergeler
         obv = np.where(close > close.shift(), volume, np.where(close < close.shift(), -volume, 0)).cumsum()
         williams_r = float(((high.rolling(window=14).max() - close) / (high.rolling(window=14).max() - low.rolling(window=14).min()) * -100).iloc[-1])
         
@@ -86,7 +90,7 @@ def komple_indikator_analizi(ticker):
         macd_line = close.ewm(span=12, adjust=False).mean() - close.ewm(span=26, adjust=False).mean()
         signal_line = macd_line.ewm(span=9, adjust=False).mean()
         
-        # 5. Destek/Direnç & Kırılım
+        # Destek/Direnç & Kırılım
         pivot = (float(high.iloc[-2]) + float(low.iloc[-2]) + float(close.iloc[-2])) / 3
         destek = round(2 * pivot - float(high.iloc[-2]), 2)
         direnc = round(2 * pivot - float(low.iloc[-2]), 2)
@@ -96,7 +100,6 @@ def komple_indikator_analizi(ticker):
         max_20 = high.rolling(window=20).max().iloc[-2]
         trend_kirildi = son_fiyat > max_20
         
-        # 🎯 KESKİN SİNYAL KARARI
         if trend_kirildi and hacim_patlamasi and (macd_line.iloc[-1] > signal_line.iloc[-1]) and rsi < 62:
             sinyal_skoru = "KESKİN AL 🚀"
         elif rsi < 40 and (macd_line.iloc[-1] > signal_line.iloc[-1]):
@@ -119,12 +122,13 @@ def komple_indikator_analizi(ticker):
     except:
         return None
 
-# 🚀 SAYFA AÇILDIĞI AN OTOMATİK TARAMA BAŞLAR
+# 🔥 2. ADIM: İLK AÇILIŞTA VERİ GÜVENLİĞİ KONTROLÜ
 if st.session_state.tarama_sonuclari is not None:
     all_data = st.session_state.tarama_sonuclari
 else:
     ilk_veriler = []
-    for h in TUM_HISSELER[:40]: # İlk açılışta ekran hızlı dolsun diye ilk 40 hisseyi çeker
+    # İlk 30 hisseyi hızlıca getirerek sayfayı doldurur
+    for h in TUM_HISSELER[:30]: 
         res = komple_indikator_analizi(h)
         if res: ilk_veriler.append(res)
     all_data = pd.DataFrame(ilk_veriler)
@@ -149,21 +153,22 @@ if st.sidebar.button("🔄 Tüm Listeyi Sıfırdan Tara"):
 
 # 📡 TELEGRAMA SİNYAL GÖNDERME BUTONU
 if st.button("📡 Keskin AL Verenleri İncele ve Telegram'a Gönder"):
-    keskinler = all_data[all_data["Sinyal"] == "KESKİN AL 🚀"]
-    if not keskinler.empty:
-        st.success(f"🔥 {len(keskinler)} adet hisse Telegram'a gönderildi!")
-        for _, row in keskinler.iterrows():
-            mesaj = (
-                f"🦅 *BIST PRO VIP AL SİNYALİ!*\n\n"
-                f"📈 *Hisse:* #{row['Hisse']}\n"
-                f"💰 *Giriş Fiyatı:* {row['Al Giriş Tutarı']} TL\n"
-                f"🎯 *Kâr Al Hedefi:* {row['Kâr Al Tutarı (TP)']} TL\n"
-                f"🚨 *Zarar Kes (Stop):* {row['Çıkış Tutarı (Stop)']} TL\n\n"
-                f"📊 _RSI: {row['RSI (14)']} | Hacim: {row['Hacim Gücü']}_"
-            )
-            telegram_mesaj_gonder(mesaj)
-    else:
-        st.info("Şu an tam kırılım aşamasında KESKİN AL veren hisse yok. Tablodan diğer 'KADEMELİ AL'ları inceleyebilirsiniz.")
+    if all_data is not None and not all_data.empty:
+        keskinler = all_data[all_data["Sinyal"] == "KESKİN AL 🚀"]
+        if not keskinler.empty:
+            st.success(f"🔥 {len(keskinler)} adet hisse Telegram'a gönderildi!")
+            for _, row in keskinler.iterrows():
+                mesaj = (
+                    f"🦅 *BIST PRO VIP AL SİNYALİ!*\n\n"
+                    f"📈 *Hisse:* #{row['Hisse']}\n"
+                    f"💰 *Giriş Fiyatı:* {row['Al Giriş Tutarı']} TL\n"
+                    f"🎯 *Kâr Al Hedefi:* {row['Kâr Al Tutarı (TP)']} TL\n"
+                    f"🚨 *Zarar Kes (Stop):* {row['Çıkış Tutarı (Stop)']} TL\n\n"
+                    f"📊 _RSI: {row['RSI (14)']} | Hacim: {row['Hacim Gücü']}_"
+                )
+                telegram_mesaj_gonder(mesaj)
+        else:
+            st.info("Şu an tam kırılım aşamasında KESKİN AL veren hisse yok.")
 
 # 📊 EKRANA BASMA KATMANI
 if all_data is not None and not all_data.empty:
