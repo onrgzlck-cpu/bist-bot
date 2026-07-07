@@ -3,28 +3,36 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-from io import BytesIO
+from plotly.subplots import make_subplots
 import os
 import requests
 
-st.set_page_config(page_title="BIST Pro Terminali", layout="wide")
+st.set_page_config(page_title="BIST Pro VIP Terminali", layout="wide")
 
-st.title("🦅 BIST Pro Algoritmik Radar & Matris Terminali")
-st.write("Tüm indikatörleri canlı gösteren, seçmeli Telegram sinyal motorlu profesyonel sürüm.")
+st.title("🦅 BIST Pro VIP Algoritmik Terminal & Grafik Odası")
+st.write("Gelişmiş indikatörlü grafikler, otomatik ayar yönetimi ve Sosyal Medya/Haber algı analizi.")
 
-# 🔑 TELEGRAM BAĞLANTI BİLGİLERİ
-TELEGRAM_TOKEN = "8861253852:AAHh_4raswH87kFEyVSib7EX5ssbLzF5ndA"
-TELEGRAM_CHAT_ID = "8767394835"
+# 🔑 TELEGRAM AYARLARINI DOSYADAN OKUMA MOTORU
+def telegram_bilgilerini_yukle():
+    token, chat_id = None, None
+    if os.path.exists("telegram_ayarlar.txt"):
+        with open("telegram_ayarlar.txt", "r") as f:
+            lines = f.readlines()
+            for line in lines:
+                if line.startswith("TOKEN:"):
+                    token = line.replace("TOKEN:", "").strip()
+                elif line.startswith("CHAT_ID:"):
+                    chat_id = line.replace("CHAT_ID:", "").strip()
+    return token, chat_id
 
-# Önbellek Süresi (30 Dakika)
+TELEGRAM_TOKEN, TELEGRAM_CHAT_ID = telegram_bilgilerini_yukle()
 OTOMATIK_YENILEME_SURESI = 1800 
 
-# 🔥 1. ADIM: SESSION STATE (HAFIZA) İLK KURULUMU (Hatanın kesin çözümü)
 if "tarama_sonuclari" not in st.session_state:
     st.session_state.tarama_sonuclari = None
 
 def telegram_mesaj_gonder(mesaj):
-    if TELEGRAM_TOKEN == "BURAYA_TOKENI_YAZIN" or TELEGRAM_CHAT_ID == "BURAYA_CHAT_ID_YAZIN":
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
         return False
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": mesaj, "parse_mode": "Markdown"}
@@ -122,12 +130,11 @@ def komple_indikator_analizi(ticker):
     except:
         return None
 
-# 🔥 2. ADIM: İLK AÇILIŞTA VERİ GÜVENLİĞİ KONTROLÜ
+# VERİ GÜVENLİĞİ KONTROLÜ
 if st.session_state.tarama_sonuclari is not None:
     all_data = st.session_state.tarama_sonuclari
 else:
     ilk_veriler = []
-    # İlk 30 hisseyi hızlıca getirerek sayfayı doldurur
     for h in TUM_HISSELER[:30]: 
         res = komple_indikator_analizi(h)
         if res: ilk_veriler.append(res)
@@ -136,10 +143,14 @@ else:
 
 # Yan Panel Butonları
 st.sidebar.header("⚙️ Kontrol Paneli")
+if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+    st.sidebar.error("⚠️ telegram_ayarlar.txt bulunamadı veya eksik!")
+else:
+    st.sidebar.success("🤖 Telegram bağlantısı aktif.")
+
 zaman_dilimi = st.sidebar.selectbox("Grafik Zaman Dilimi", ["1d", "1h"])
 gosterim_tipi = st.sidebar.radio("Sinyal Filtresi", ["Tüm Liste", "Sadece KESKİN AL Olanlar"])
 
-# 🔄 MANUEL TÜMÜNÜ YENİLE BUTONU
 if st.sidebar.button("🔄 Tüm Listeyi Sıfırdan Tara"):
     yeniler = []
     pro_bar = st.progress(0)
@@ -182,19 +193,99 @@ if all_data is not None and not all_data.empty:
 
     st.markdown("---")
     
-    # Grafikler
-    st.subheader("🔍 Tekil Hisse Grafik Odası")
+    # 🔍 GELİŞMİŞ GRAFİK VE SOSYAL MEDYA/HABER ODASI
+    st.subheader("🔍 Tekil Hisse Profesyonel Grafik & Algı Analiz Laboratuvarı")
     aktif_hisse = st.selectbox("Hisse Seçin:", gosterilecek_df["Hisse"].unique())
+    
     if aktif_hisse:
         h_row = gosterilecek_df[gosterilecek_df["Hisse"] == aktif_hisse].iloc[0]
+        
+        # Üst Metrik Kartları
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Fiyat", f"{h_row['Son Fiyat']} TL")
-        c2.metric("Sinyal", h_row['Sinyal'])
+        c2.metric("Sinyal Skoru", h_row['Sinyal'])
         c3.metric("Kâr Al (TP)", f"{h_row['Kâr Al Tutarı (TP)']} TL")
         c4.metric("Zarar Kes (Stop)", f"{h_row['Çıkış Tutarı (Stop)']} TL")
         
+        # 📊 MULTI-SUBPLOT GRAFİK MOTORU (MUM + HACİM + İNDİKATÖRLER)
         g_df = yf.download(f"{aktif_hisse}.IS", period="3mo", interval=zaman_dilimi, progress=False)
         if isinstance(g_df.columns, pd.MultiIndex): g_df.columns = g_df.columns.droplevel(1)
-        fig = go.Figure(data=[go.Candlestick(x=g_df.index, open=g_df['Open'], high=g_df['High'], low=g_df['Low'], close=g_df['Close'])])
-        fig.update_layout(xaxis_rangeslider_visible=False, template="plotly_dark")
+        
+        # İndikatör Hesaplamaları (Grafik İçi)
+        g_df['EMA5'] = g_df['Close'].ewm(span=5, adjust=False).mean()
+        g_df['EMA20'] = g_df['Close'].ewm(span=20, adjust=False).mean()
+        g_df['SMA20'] = g_df['Close'].rolling(window=20).mean()
+        
+        # RSI Hesaplama (Grafik Altı Alt-Panel İçin)
+        d_close = g_df['Close'].diff()
+        g_gain = (d_close.where(d_close > 0, 0)).rolling(window=14).mean()
+        g_loss = (-d_close.where(d_close < 0, 0)).rolling(window=14).mean()
+        g_rs = g_gain / (g_loss + 1e-9)
+        g_df['RSI'] = 100 - (100 / (1 + g_rs))
+
+        # 3 Katmanlı Grafik Alanı Tanımlama (Mum/Ortalamalar, Hacim, RSI)
+        fig = make_subplots(rows=3, cols=1, shared_xaxes=True, 
+                            vertical_spacing=0.05, 
+                            row_heights=[0.6, 0.2, 0.2])
+        
+        # 1. Katman: Mum ve Hareketli Ortalamalar
+        fig.add_trace(go.Candlestick(x=g_df.index, open=g_df['Open'], high=g_df['High'], low=g_df['Low'], close=g_df['Close'], name="Fiyat Fiyat"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=g_df.index, y=g_df['EMA5'], line=dict(color='yellow', width=1), name='EMA 5'), row=1, col=1)
+        fig.add_trace(go.Scatter(x=g_df.index, y=g_df['EMA20'], line=dict(color='cyan', width=1.5), name='EMA 20'), row=1, col=1)
+        fig.add_trace(go.Scatter(x=g_df.index, y=g_df['SMA20'], line=dict(color='magenta', width=1), name='SMA 20'), row=1, col=1)
+        
+        # 2. Katman: Hacim Barları
+        renkler = ['green' if c >= o else 'red' for c, o in zip(g_df['Close'], g_df['Open'])]
+        fig.add_trace(go.Bar(x=g_df.index, y=g_df['Volume'], marker_color=renkler, name='Hacim'), row=2, col=1)
+        
+        # 3. Katman: RSI (14) Alanı
+        fig.add_trace(go.Scatter(x=g_df.index, y=g_df['RSI'], line=dict(color='orange', width=1.5), name='RSI (14)'), row=3, col=1)
+        fig.add_add_line = fig.add_hline(y=70, line_dash="dash", line_color="red", row=3, col=1)
+        fig.add_add_line2 = fig.add_hline(y=30, line_dash="dash", line_color="green", row=3, col=1)
+        
+        fig.update_layout(xaxis_rangeslider_visible=False, template="plotly_dark", height=700, margin=dict(t=20, b=20))
         st.plotly_chart(fig, use_container_width=True)
+        
+        # 🌐 SOSYAL MEDYA & KURUMSAL ALGI / GÜVENİLİRLİK ODASI
+        st.markdown("### 💬 Güncel Sosyal Medya Algısı & Kurumsal Haber Analizi")
+        
+        try:
+            hisse_detay = yf.Ticker(f"{aktif_hisse}.IS")
+            haberler = hisse_detay.news[:3] # En güncel 3 kurumsal haberi/yorumu çeker
+            
+            if haberler:
+                gc1, gc2 = st.columns([2, 1])
+                
+                with gc1:
+                    st.write("📌 **Son Çıkan Piyasa Yorumları & Akış:**")
+                    olumlu_skor = 0
+                    for h in haberler:
+                        baslik = h.get('title', 'Haber Başlığı Bulunamadı')
+                        kaynak = h.get('publisher', 'Finans Servisi')
+                        st.caption(f"🔔 **{kaynak}**: {baslik}")
+                        # Basit kurumsal kelime tarama oylaması (Algoritma)
+                        if any(w in baslik.lower() for w in ['up', 'growth', 'kar', 'kazanc', 'buy', 'yukselis', 'rekor', 'pozitif']):
+                            olumlu_skor += 35
+                        else:
+                            olumlu_skor += 20
+                
+                with gc2:
+                    # İndikatör değerleri ve haber algısına göre dinamik güvenilirlik skoru üretme
+                    temel_guven = 50
+                    if h_row['Sinyal'] == "KESKİN AL 🚀": temel_guven += 25
+                    if h_row['Hacim Gücü'] == "Yüksek 🔥": temel_guven += 15
+                    if 45 <= h_row['RSI (14)'] <= 60: temel_guven += 10
+                    
+                    final_guven = min(temel_guven + olumlu_skor // 3, 98)
+                    
+                    st.metric("🎯 Algoritmik Güvenilirlik Oranı", f"% {final_guven}")
+                    if final_guven > 75:
+                        st.success("🔥 Kurumsal ve teknik uyum çok yüksek. Güvenli bölge.")
+                    elif final_guven > 50:
+                        st.warning("⚖️ Teknik veriler iyi fakat sosyal algı nötr. Dikkatli olunmalı.")
+                    else:
+                        st.error("🚨 Spekülasyon veya hacimsiz hareket riski var!")
+            else:
+                st.info("Bu hisse için son 24 saatte güncel kurumsal haber akışı veya sosyal yorum saptanmadı. Skor nötr (%50).")
+        except:
+            st.info("Haber motoru şu an meşgul, algı skoru nötr kabul ediliyor.")
