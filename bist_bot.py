@@ -51,7 +51,7 @@ def hisse_listesini_yukle():
 
 TUM_HISSELER = hisse_listesini_yukle()
 
-# 🧮 PROFESYONEL İNDİKATÖR MOTORU
+# 🧮 PROFESYONEL SİNYAL MOTORU
 @st.cache_data(ttl=OTOMATIK_YENILEME_SURESI)
 def komple_indikator_analizi(ticker):
     try:
@@ -65,39 +65,21 @@ def komple_indikator_analizi(ticker):
         volume = df['Volume'].astype(float)
         son_fiyat = float(close.iloc[-1])
         
-        # RSI
+        # Sinyal için temel indikatör hesapları
         delta = close.diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rsi = float(100 - (100 / (1 + (gain / (loss + 1e-9)))).iloc[-1])
         
-        # Ortalamalar
-        ema5 = float(close.ewm(span=5, adjust=False).mean().iloc[-1])
-        ema12 = float(close.ewm(span=12, adjust=False).mean().iloc[-1])
-        ema20 = float(close.ewm(span=20, adjust=False).mean().iloc[-1])
-        ema26 = float(close.ewm(span=26, adjust=False).mean().iloc[-1])
-        sma5 = float(close.rolling(window=5).mean().iloc[-1])
-        sma20 = float(close.rolling(window=20).mean().iloc[-1])
+        macd_line = close.ewm(span=12, adjust=False).mean() - close.ewm(span=26, adjust=False).mean()
+        signal_line = macd_line.ewm(span=9, adjust=False).mean()
         
-        # ATR & Dinamik Seviyeler
         tr = pd.concat([high - low, (high - close.shift()).abs(), (low - close.shift()).abs()], axis=1).max(axis=1)
         atr = float(tr.rolling(window=14).mean().iloc[-1])
-        
-        al_giris = round(son_fiyat, 2)
-        kar_tutari = round(son_fiyat + (2.2 * atr), 2)
-        cikis_tutari = round(son_fiyat - (1.5 * atr), 2)
-        
-        # Diğer Göstergeler
-        obv = np.where(close > close.shift(), volume, np.where(close < close.shift(), -volume, 0)).cumsum()
-        williams_r = float(((high.rolling(window=14).max() - close) / (high.rolling(window=14).max() - low.rolling(window=14).min()) * -100).iloc[-1])
         
         tp = (high + low + close) / 3
         cci = float(((tp - tp.rolling(window=20).mean()) / (0.015 * tp.rolling(window=20).apply(lambda x: np.abs(x - x.mean()).mean()))).iloc[-1])
         
-        macd_line = close.ewm(span=12, adjust=False).mean() - close.ewm(span=26, adjust=False).mean()
-        signal_line = macd_line.ewm(span=9, adjust=False).mean()
-        
-        # Destek/Direnç & Kırılım
         pivot = (float(high.iloc[-2]) + float(low.iloc[-2]) + float(close.iloc[-2])) / 3
         destek = round(2 * pivot - float(high.iloc[-2]), 2)
         direnc = round(2 * pivot - float(low.iloc[-2]), 2)
@@ -118,23 +100,19 @@ def komple_indikator_analizi(ticker):
 
         return {
             "Hisse": ticker.replace(".IS", ""), "Son Fiyat": round(son_fiyat, 2), "Sinyal": sinyal_skoru,
-            "Al Giriş Tutarı": al_giris, "Kâr Al Tutarı (TP)": kar_tutari, "Çıkış Tutarı (Stop)": cikis_tutari,
-            "RSI (14)": round(rsi, 2), "EMA5": round(ema5, 2), "EMA12": round(ema12, 2), "EMA20": round(ema20, 2),
-            "EMA26": round(ema26, 2), "SMA5": round(sma5, 2), "SMA20": round(sma20, 2), "ATR": round(atr, 2),
-            "OBV": int(obv[-1]), "Williams %R": round(williams_r, 2), "CCI": round(cci, 2),
-            "MACD": round(macd_line.iloc[-1], 2), "MACD Signal": round(signal_line.iloc[-1], 2),
-            "Destek": destek, "Direnç": direnc, "Hacim Gücü": "Yüksek 🔥" if hacim_patlamasi else "Normal",
-            "Kırılım": "Düşen Kırıldı" if trend_kirildi else "Yatay"
+            "Al Giriş Tutarı": round(son_fiyat, 2), "Kâr Al Tutarı (TP)": round(son_fiyat + (2.2 * atr), 2), "Çıkış Tutarı (Stop)": round(son_fiyat - (1.5 * atr), 2),
+            "RSI (14)": round(rsi, 2), "ATR": round(atr, 2), "CCI": round(cci, 2), "Destek": destek, "Direnç": direnc, 
+            "Hacim Gücü": "Yüksek 🔥" if hacim_patlamasi else "Normal"
         }
     except:
         return None
 
-# 🔥 İLK AÇILIŞTAKİ GÖRSEL YÜZDELİK DOLMA ÇUBUĞU (GERİ GELDİ)
+# 👀 İLK AÇILIŞTAKİ GÖRSEL YÜZDELİK DOLMA ÇUBUĞU (KORUNDU)
 if st.session_state.tarama_sonuclari is not None:
     all_data = st.session_state.tarama_sonuclari
 else:
     ilk_veriler = []
-    st.write("🔄 Sistem ilk kez başlatılıyor, tüm listelendirmeler taranıyor...")
+    st.write("🔄 Sistem başlatılıyor, tüm hisseler taranıyor...")
     ana_pro_bar = st.progress(0)
     for idx, h in enumerate(TUM_HISSELER):
         res = komple_indikator_analizi(h)
@@ -146,7 +124,7 @@ else:
         all_data = pd.DataFrame(columns=["Hisse", "Sinyal"])
     st.session_state.tarama_sonuclari = all_data
 
-# Yan Panel Butonları
+# Yan Panel Kontrolleri
 st.sidebar.header("⚙️ Kontrol Paneli")
 if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
     st.sidebar.error("⚠️ telegram_ayarlar.txt eksik!")
@@ -170,7 +148,7 @@ if st.sidebar.button("🔄 Tüm Listeyi Sıfırdan Tara"):
     st.session_state.tarama_sonuclari = all_data
     st.rerun()
 
-# 📡 TELEGRAMA TAM OTOMATİK SİNYAL GÖNDERİMİ
+# 📡 TELEGRAMA TAM OTOMATİK SİNYAL GÖNDERİMİ (KORUNDU)
 if "telegram_gonderilenler" not in st.session_state:
     st.session_state.telegram_gonderilenler = set()
 
@@ -202,61 +180,141 @@ if not all_data.empty:
 
     st.markdown("---")
     
-    # 🔍 GELİŞMİŞ GRAFİK VE SOSYAL MEDYA/HABER ODASI
-    st.subheader("🔍 Tekil Hisse Profesyonel Grafik & Algı Analiz Laboratuvarı")
+    # 🔍 INVESTING TARZI GELİŞMİŞ GRAFİK ODASI
+    st.subheader("🔍 Tekil Hisse Gelişmiş Grafik & Algı Analiz Laboratuvarı")
     
     liste_hisseler = gosterilecek_df["Hisse"].unique() if "Hisse" in gosterilecek_df.columns and len(gosterilecek_df) > 0 else [h.replace(".IS", "") for h in TUM_HISSELER]
     aktif_hisse = st.selectbox("Hisse Seçin (Arama Yapabilirsiniz):", liste_hisseler)
     
-    if aktif_hisse and "Hisse" in gosterilecek_df.columns and aktif_hisse in gosterilecek_df["Hisse"].values:
-        h_row = gosterilecek_df[gosterilecek_df["Hisse"] == aktif_hisse].iloc[0]
+    if aktif_hisse:
+        h_row = gosterilecek_df[gosterilecek_df["Hisse"] == aktif_hisse].iloc[0] if not gosterilecek_df[gosterilecek_df["Hisse"] == aktif_hisse].empty else {"Son Fiyat":"N/A","Sinyal":"N/A","Kâr Al Tutarı (TP)":"N/A","Çıkış Tutarı (Stop)":"N/A"}
         
-        # Üst Metrik Kartları
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Fiyat", f"{h_row.get('Son Fiyat', 'N/A')} TL")
         c2.metric("Sinyal Skoru", h_row.get('Sinyal', 'N/A'))
         c3.metric("Kâr Al (TP)", f"{h_row.get('Kâr Al Tutarı (TP)', 'N/A')} TL")
         c4.metric("Zarar Kes (Stop)", f"{h_row.get('Çıkış Tutarı (Stop)', 'N/A')} TL")
         
-        # 📊 MULTI-SUBPLOT GRAFİK MOTORU
-        g_df = yf.download(f"{aktif_hisse}.IS", period="3mo", interval=zaman_dilimi, progress=False)
+        # 📈 INVESTING SEÇMELİ İNDİKATÖR PANELİ
+        st.markdown("#### 🛠️ Grafik İndikatörleri Ekle / Kaldır (TradingView Stili)")
+        secilen_indikatorler = st.multiselect(
+            "Grafiğe eklemek istediğiniz teknik göstergeleri seçin:",
+            ["EMA 5", "EMA 20", "SMA 20", "SMA 50", "SMA 200", "Bollinger Bands", "MACD", "CCI", "Williams %R", "OBV"],
+            default=["EMA 5", "EMA 20", "SMA 20"]  # Temelde görünmesini istediğiniz varsayılanlar
+        )
+        
+        g_df = yf.download(f"{aktif_hisse}.IS", period="6mo", interval=zaman_dilimi, progress=False)
         if not g_df.empty:
             if isinstance(g_df.columns, pd.MultiIndex): g_df.columns = g_df.columns.droplevel(1)
             
-            g_df['EMA5'] = g_df['Close'].ewm(span=5, adjust=False).mean()
-            g_df['EMA20'] = g_df['Close'].ewm(span=20, adjust=False).mean()
-            g_df['SMA20'] = g_df['Close'].rolling(window=20).mean()
+            # Dinamik Panel Hesaplama Algoritması
+            alt_paneller = ["Hacim", "RSI (14)"] # Her zaman sabit olan alt paneller
+            if "MACD" in secilen_indikatorler: alt_paneller.append("MACD")
+            if "CCI" in secilen_indikatorler: alt_paneller.append("CCI")
+            if "Williams %R" in secilen_indikatorler: alt_paneller.append("Williams %R")
+            if "OBV" in secilen_indikatorler: alt_paneller.append("OBV")
             
+            # Subplot Yapısını Dinamik Kurma (1 Ana Mum + Kaç tane alt panel varsa)
+            toplam_satir = 1 + len(alt_paneller)
+            yükseklikler = [0.45] + [0.12] * (toplam_satir - 1)
+            
+            fig = make_subplots(rows=toplam_satir, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=yükseklikler)
+            
+            # 1. SATIR: ANA MUM GRAFİĞİ
+            fig.add_trace(go.Candlestick(x=g_df.index, open=g_df['Open'], high=g_df['High'], low=g_df['Low'], close=g_df['Close'], name=f"{aktif_hisse} Mum"), row=1, col=1)
+            
+            # Fiyat Üzerine Binen Hareketli Ortalamalar (Overlay)
+            if "EMA 5" in secilen_indikatorler:
+                g_df['EMA5'] = g_df['Close'].ewm(span=5, adjust=False).mean()
+                fig.add_trace(go.Scatter(x=g_df.index, y=g_df['EMA5'], line=dict(color='yellow', width=1), name='EMA 5'), row=1, col=1)
+            if "EMA 20" in secilen_indikatorler:
+                g_df['EMA20'] = g_df['Close'].ewm(span=20, adjust=False).mean()
+                fig.add_trace(go.Scatter(x=g_df.index, y=g_df['EMA20'], line=dict(color='cyan', width=1.2), name='EMA 20'), row=1, col=1)
+            if "SMA 20" in secilen_indikatorler:
+                g_df['SMA20'] = g_df['Close'].rolling(window=20).mean()
+                fig.add_trace(go.Scatter(x=g_df.index, y=g_df['SMA20'], line=dict(color='magenta', width=1), name='SMA 20'), row=1, col=1)
+            if "SMA 50" in secilen_indikatorler:
+                g_df['SMA50'] = g_df['Close'].rolling(window=50).mean()
+                fig.add_trace(go.Scatter(x=g_df.index, y=g_df['SMA50'], line=dict(color='orange', width=1.5), name='SMA 50'), row=1, col=1)
+            if "SMA 200" in secilen_indikatorler:
+                g_df['SMA200'] = g_df['Close'].rolling(window=200).mean()
+                fig.add_trace(go.Scatter(x=g_df.index, y=g_df['SMA200'], line=dict(color='red', width=2), name='SMA 200'), row=1, col=1)
+                
+            # Bollinger Bantları (Overlay)
+            if "Bollinger Bands" in secilen_indikatorler:
+                sma = g_df['Close'].rolling(window=20).mean()
+                rstd = g_df['Close'].rolling(window=20).std()
+                g_df['B_Upper'] = sma + (2 * rstd)
+                g_df['B_Lower'] = sma - (2 * rstd)
+                fig.add_trace(go.Scatter(x=g_df.index, y=g_df['B_Upper'], line=dict(color='gray', width=1, dash='dash'), name='BB Üst'), row=1, col=1)
+                fig.add_trace(go.Scatter(x=g_df.index, y=g_df['B_Lower'], line=dict(color='gray', width=1, dash='dash'), name='BB Alt'), row=1, col=1)
+
+            # DİNAMİK ALT PANELLER KATMANI
+            mevcut_satir = 2
+            
+            # Panel: Hacim Barları
+            renkler = ['green' if c >= o else 'red' for c, o in zip(g_df['Close'], g_df['Open'])]
+            fig.add_trace(go.Bar(x=g_df.index, y=g_df['Volume'], marker_color=renkler, name='Hacim'), row=mevcut_satir, col=1)
+            mevcut_satir += 1
+            
+            # Panel: Sabit RSI (14)
             d_close = g_df['Close'].diff()
             g_gain = (d_close.where(d_close > 0, 0)).rolling(window=14).mean()
             g_loss = (-d_close.where(d_close < 0, 0)).rolling(window=14).mean()
             g_df['RSI'] = 100 - (100 / (1 + (g_gain / (g_loss + 1e-9))))
-
-            fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.6, 0.2, 0.2])
+            fig.add_trace(go.Scatter(x=g_df.index, y=g_df['RSI'], line=dict(color='orange', width=1.5), name='RSI (14)'), row=mevcut_satir, col=1)
+            # Kesikli Sınır Çizgileri (70 ve 30 Seviyeleri)
+            fig.add_hline(y=70, line_dash="dash", line_color="red", row=mevcut_satir, col=1)
+            fig.add_hline(y=30, line_dash="dash", line_color="green", row=mevcut_satir, col=1)
+            mevcut_satir += 1
             
-            fig.add_trace(go.Candlestick(x=g_df.index, open=g_df['Open'], high=g_df['High'], low=g_df['Low'], close=g_df['Close'], name="Fiyat"), row=1, col=1)
-            fig.add_trace(go.Scatter(x=g_df.index, y=g_df['EMA5'], line=dict(color='yellow', width=1), name='EMA 5'), row=1, col=1)
-            fig.add_trace(go.Scatter(x=g_df.index, y=g_df['EMA20'], line=dict(color='cyan', width=1.5), name='EMA 20'), row=1, col=1)
-            fig.add_trace(go.Scatter(x=g_df.index, y=g_df['SMA20'], line=dict(color='magenta', width=1), name='SMA 20'), row=1, col=1)
+            # Seçmeli Panel: MACD
+            if "MACD" in secilen_indikatorler:
+                macd_line = g_df['Close'].ewm(span=12, adjust=False).mean() - g_df['Close'].ewm(span=26, adjust=False).mean()
+                signal_line = macd_line.ewm(span=9, adjust=False).mean()
+                macd_hist = macd_line - signal_line
+                fig.add_trace(go.Scatter(x=g_df.index, y=macd_line, line=dict(color='blue', width=1), name='MACD'), row=mevcut_satir, col=1)
+                fig.add_trace(go.Scatter(x=g_df.index, y=signal_line, line=dict(color='red', width=1), name='Signal'), row=mevcut_satir, col=1)
+                fig.add_trace(go.Bar(x=g_df.index, y=macd_hist, name='Hist'), row=mevcut_satir, col=1)
+                mevcut_satir += 1
+                
+            # Seçmeli Panel: CCI
+            if "CCI" in secilen_indikatorler:
+                tp = (g_df['High'] + g_df['Low'] + g_df['Close']) / 3
+                cci = (tp - tp.rolling(window=20).mean()) / (0.015 * tp.rolling(window=20).apply(lambda x: np.abs(x - x.mean()).mean()))
+                fig.add_trace(go.Scatter(x=g_df.index, y=cci, line=dict(color='purple', width=1.2), name='CCI'), row=mevcut_satir, col=1)
+                fig.add_hline(y=100, line_dash="dash", line_color="red", row=mevcut_satir, col=1)
+                fig.add_hline(y=-100, line_dash="dash", line_color="green", row=mevcut_satir, col=1)
+                mevcut_satir += 1
+                
+            # Seçmeli Panel: Williams %R
+            if "Williams %R" in secilen_indikatorler:
+                w_r = ((g_df['High'].rolling(window=14).max() - g_df['Close']) / (g_df['High'].rolling(window=14).max() - g_df['Low'].rolling(window=14).min())) * -100
+                fig.add_trace(go.Scatter(x=g_df.index, y=w_r, line=dict(color='pink', width=1.2), name='Williams %R'), row=mevcut_satir, col=1)
+                fig.add_hline(y=-20, line_dash="dash", line_color="red", row=mevcut_satir, col=1)
+                fig.add_hline(y=-80, line_dash="dash", line_color="green", row=mevcut_satir, col=1)
+                mevcut_satir += 1
+                
+            # Seçmeli Panel: OBV
+            if "OBV" in secilen_indikatorler:
+                obv = np.where(g_df['Close'] > g_df['Close'].shift(), g_df['Volume'], np.where(g_df['Close'] < g_df['Close'].shift(), -g_df['Volume'], 0)).cumsum()
+                fig.add_trace(go.Scatter(x=g_df.index, y=obv, line=dict(color='lightgreen', width=1.5), name='OBV'), row=mevcut_satir, col=1)
+                mevcut_satir += 1
             
-            renkler = ['green' if c >= o else 'red' for c, o in zip(g_df['Close'], g_df['Open'])]
-            fig.add_trace(go.Bar(x=g_df.index, y=g_df['Volume'], marker_color=renkler, name='Hacim'), row=2, col=1)
-            fig.add_trace(go.Scatter(x=g_df.index, y=g_df['RSI'], line=dict(color='orange', width=1.5), name='RSI (14)'), row=3, col=1)
-            
-            fig.update_layout(xaxis_rangeslider_visible=False, template="plotly_dark", height=700, margin=dict(t=20, b=20))
+            # Genel Düzenleme ve Temalandırma
+            dinamik_yukseklik = 500 + (mevcut_satir * 90) # Panel sayısına göre grafik boyutu otomatik uzar
+            fig.update_layout(xaxis_rangeslider_visible=False, template="plotly_dark", height=dinamik_yukseklik, margin=dict(t=10, b=10))
             st.plotly_chart(fig, use_container_width=True)
             
-            # 🌐 SOSYAL MEDYA & KURUMSAL ALGI / GÜVENİLİRLİK ODASI
+            # 🌐 SOSYAL MEDYA & KURUMSAL Haber Akışı (KORUNDU)
             st.markdown("### 💬 Güncel Sosyal Medya Algısı & Kurumsal Haber Analizi")
-            
             try:
                 hisse_detay = yf.Ticker(f"{aktif_hisse}.IS")
                 haberler = hisse_detay.news[:3]
-                
                 if haberler:
                     gc1, gc2 = st.columns([2, 1])
                     with gc1:
-                        st.write("📌 **Son Çıkan Piyasa Yorumları & Akış:**")
+                        st.write("📌 **Son Yorumlar & Haber Akışı:**")
                         olumlu_skor = 0
                         for h in haberler:
                             baslik = h.get('title', 'Haber Başlığı Bulunamadı')
@@ -264,26 +322,19 @@ if not all_data.empty:
                             st.caption(f"🔔 **{kaynak}**: {baslik}")
                             if any(w in baslik.lower() for w in ['up', 'growth', 'kar', 'kazanc', 'buy', 'yukselis', 'rekor', 'pozitif']):
                                 olumlu_skor += 35
-                            else:
-                                olumlu_skor += 20
-                    
+                            else: olumlu_skor += 20
                     with gc2:
                         temel_guven = 50
                         if h_row.get('Sinyal') == "KESKİN AL 🚀": temel_guven += 25
-                        if h_row.get('Hacim Gücü') == "Yüksek 🔥": temel_guven += 15
                         if 45 <= h_row.get('RSI (14)', 50) <= 60: temel_guven += 10
                         final_guven = min(temel_guven + olumlu_skor // 3, 98)
-                        
                         st.metric("🎯 Algoritmik Güvenilirlik Oranı", f"% {final_guven}")
-                        if final_guven > 75:
-                            st.success("🔥 Kurumsal ve teknik uyum çok yüksek. Güvenli bölge.")
-                        elif final_guven > 50:
-                            st.warning("⚖️ Teknik veriler iyi fakat sosyal algı nötr. Dikkatli olunmalı.")
-                        else:
-                            st.error("🚨 Spekülasyon veya hacimsiz hareket riski var!")
+                        if final_guven > 75: st.success("🔥 Kurumsal ve teknik uyum çok yüksek.")
+                        elif final_guven > 50: st.warning("⚖️ Teknik veriler iyi fakat algı nötr.")
+                        else: st.error("🚨 Spekülasyon riski var!")
                 else:
-                    st.info("Bu hisse için son 24 saatte güncel kurumsal haber akışı veya sosyal yorum saptanmadı. Skor nötr (%50).")
+                    st.info("Son 24 saatte haber akışı saptanmadı. Skor nötr (%50).")
             except:
-                st.info("Haber motoru şu an meşgul, algı skoru nötr kabul ediliyor.")
+                st.info("Haber motoru şu an yoğun, algı skoru nötr kabul ediliyor.")
 else:
     st.warning("Matris tablosu boş veya veriler henüz yüklenmedi. Lütfen sol menüden 'Tüm Listeyi Sıfırdan Tara' butonuna basarak verileri tetikleyin.")
