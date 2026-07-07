@@ -7,10 +7,9 @@ from plotly.subplots import make_subplots
 import os
 import requests
 
-st.set_page_config(page_title="BIST Pro VIP Terminali", layout="wide")
+st.set_page_config(page_title="BIST VIP Analiz", layout="wide")
 
-st.title("🦅 BIST Pro VIP Algoritmik Terminal & Grafik Odası")
-st.write("Gelişmiş indikatörlü grafikler, otomatik ayar yönetimi ve Sosyal Medya/Haber algı analizi.")
+st.title("🦅 BIST VIP Algoritmik Analiz")
 
 # 🔑 TELEGRAM AYARLARINI DOSYADAN OKUMA MOTORU
 def telegram_bilgilerini_yukle():
@@ -130,12 +129,13 @@ def komple_indikator_analizi(ticker):
     except:
         return None
 
-# VERİ GÜVENLİĞİ KONTROLÜ
+# 🔥 1. SİLİNDİ: TÜM HİSSELER SINIRSIZ ŞEKİLDE TARANIYOR
 if st.session_state.tarama_sonuclari is not None:
     all_data = st.session_state.tarama_sonuclari
 else:
     ilk_veriler = []
-    for h in TUM_HISSELER[:30]: 
+    # Sınırlandırma kaldırıldı, listedeki tüm hisseleri tek seferde tarar.
+    for h in TUM_HISSELER: 
         res = komple_indikator_analizi(h)
         if res: ilk_veriler.append(res)
     if ilk_veriler:
@@ -168,24 +168,26 @@ if st.sidebar.button("🔄 Tüm Listeyi Sıfırdan Tara"):
     st.session_state.tarama_sonuclari = all_data
     st.rerun()
 
-# 📡 TELEGRAMA SİNYAL GÖNDERME BUTONU
-if st.button("📡 Keskin AL Verenleri İncele ve Telegram'a Gönder"):
-    if not all_data.empty and "Sinyal" in all_data.columns:
-        keskinler = all_data[all_data["Sinyal"] == "KESKİN AL 🚀"]
-        if not keskinler.empty:
-            st.success(f"🔥 {len(keskinler)} adet hisse Telegram'a gönderildi!")
-            for _, row in keskinler.iterrows():
-                mesaj = (
-                    f"🦅 *BIST PRO VIP AL SİNYALİ!*\n\n"
-                    f"📈 *Hisse:* #{row['Hisse']}\n"
-                    f"💰 *Giriş Fiyatı:* {row['Al Giriş Tutarı']} TL\n"
-                    f"🎯 *Kâr Al Hedefi:* {row['Kâr Al Tutarı (TP)']} TL\n"
-                    f"🚨 *Zarar Kes (Stop):* {row['Çıkış Tutarı (Stop)']} TL\n\n"
-                    f"📊 _RSI: {row['RSI (14)']} | Hacim: {row['Hacim Gücü']}_"
-                )
-                telegram_mesaj_gonder(mesaj)
-        else:
-            st.info("Şu an tam kırılım aşamasında KESKİN AL veren hisse yok.")
+# 🔥 2. SİLİNDİ: TELEGRAM ARTIK BUTONSUZ TAM OTOMATİK ÇALIŞIYOR
+if "telegram_gonderilenler" not in st.session_state:
+    st.session_state.telegram_gonderilenler = set()
+
+if not all_data.empty and "Sinyal" in all_data.columns:
+    keskinler = all_data[all_data["Sinyal"] == "KESKİN AL 🚀"]
+    for _, row in keskinler.iterrows():
+        hisse_kodu = row['Hisse']
+        # Aynı sinyali üst üste kanala tekrar fırlatıp spam yapmasın diye hafıza kontrolü
+        if hisse_kodu not in st.session_state.telegram_gonderilenler:
+            mesaj = (
+                f"🦅 *BIST PRO VIP AL SİNYALİ!*\n\n"
+                f"📈 *Hisse:* #{row['Hisse']}\n"
+                f"💰 *Giriş Fiyatı:* {row['Al Giriş Tutarı']} TL\n"
+                f"🎯 *Kâr Al Hedefi:* {row['Kâr Al Tutarı (TP)']} TL\n"
+                f"🚨 *Zarar Kes (Stop):* {row['Çıkış Tutarı (Stop)']} TL\n\n"
+                f"📊 _RSI: {row['RSI (14)']} | Hacim: {row['Hacim Gücü']}_"
+            )
+            if telegram_mesaj_gonder(mesaj):
+                st.session_state.telegram_gonderilenler.add(hisse_kodu)
 
 # 📊 EKRANA BASMA KATMANI
 if not all_data.empty:
@@ -202,7 +204,6 @@ if not all_data.empty:
     # 🔍 GELİŞMİŞ GRAFİK VE SOSYAL MEDYA/HABER ODASI
     st.subheader("🔍 Tekil Hisse Profesyonel Grafik & Algı Analiz Laboratuvarı")
     
-    # 🔥 ARAMA KUTUSUNUN ÇÖKMEK/KİLİTLENMEK YERİNE GÜVENLİ LİSTE ÇEKMESİ SAĞLANDI
     liste_hisseler = gosterilecek_df["Hisse"].unique() if "Hisse" in gosterilecek_df.columns and len(gosterilecek_df) > 0 else [h.replace(".IS", "") for h in TUM_HISSELER]
     aktif_hisse = st.selectbox("Hisse Seçin (Arama Yapabilirsiniz):", liste_hisseler)
     
