@@ -71,7 +71,7 @@ def detayli_analiz_yap(ticker):
         return {
             "Hisse": ticker.replace(".IS", ""),
             "Son Kapanış (TL)": round(son_fiyat, 2),
-            "SMC Durumu": smc_sinyal = "SMC Alım (FVG)" if h1 < l3 else "Normal",
+            "SMC Durumu": "SMC Alım (FVG)" if h1 < l3 else "Normal",
             "SMC Giriş (Retest)": giris_yeri if giris_yeri > 0 else "-",
             "SMC Hedef": hedef_yeri if hedef_yeri > 0 else "-",
             "RSI (14)": round(rsi, 2),
