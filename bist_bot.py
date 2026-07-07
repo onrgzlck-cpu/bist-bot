@@ -144,7 +144,7 @@ else:
 # Yan Panel Butonları
 st.sidebar.header("⚙️ Kontrol Paneli")
 if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-    st.sidebar.error("⚠️ telegram_ayarlar.txt bulunamadı veya eksik!")
+    st.sidebar.error("⚠️ telegram_ayarlar.txt eksik!")
 else:
     st.sidebar.success("🤖 Telegram bağlantısı aktif.")
 
@@ -211,25 +211,22 @@ if all_data is not None and not all_data.empty:
         g_df = yf.download(f"{aktif_hisse}.IS", period="3mo", interval=zaman_dilimi, progress=False)
         if isinstance(g_df.columns, pd.MultiIndex): g_df.columns = g_df.columns.droplevel(1)
         
-        # İndikatör Hesaplamaları (Grafik İçi)
         g_df['EMA5'] = g_df['Close'].ewm(span=5, adjust=False).mean()
         g_df['EMA20'] = g_df['Close'].ewm(span=20, adjust=False).mean()
         g_df['SMA20'] = g_df['Close'].rolling(window=20).mean()
         
-        # RSI Hesaplama (Grafik Altı Alt-Panel İçin)
         d_close = g_df['Close'].diff()
         g_gain = (d_close.where(d_close > 0, 0)).rolling(window=14).mean()
         g_loss = (-d_close.where(d_close < 0, 0)).rolling(window=14).mean()
-        g_rs = g_gain / (g_loss + 1e-9)
-        g_df['RSI'] = 100 - (100 / (1 + g_rs))
+        g_df['RSI'] = 100 - (100 / (1 + (g_gain / (g_loss + 1e-9))))
 
-        # 3 Katmanlı Grafik Alanı Tanımlama (Mum/Ortalamalar, Hacim, RSI)
+        # Grafik Katmanları (Hatalı satırlar tamamen temizlendi)
         fig = make_subplots(rows=3, cols=1, shared_xaxes=True, 
                             vertical_spacing=0.05, 
                             row_heights=[0.6, 0.2, 0.2])
         
         # 1. Katman: Mum ve Hareketli Ortalamalar
-        fig.add_trace(go.Candlestick(x=g_df.index, open=g_df['Open'], high=g_df['High'], low=g_df['Low'], close=g_df['Close'], name="Fiyat Fiyat"), row=1, col=1)
+        fig.add_trace(go.Candlestick(x=g_df.index, open=g_df['Open'], high=g_df['High'], low=g_df['Low'], close=g_df['Close'], name="Fiyat"), row=1, col=1)
         fig.add_trace(go.Scatter(x=g_df.index, y=g_df['EMA5'], line=dict(color='yellow', width=1), name='EMA 5'), row=1, col=1)
         fig.add_trace(go.Scatter(x=g_df.index, y=g_df['EMA20'], line=dict(color='cyan', width=1.5), name='EMA 20'), row=1, col=1)
         fig.add_trace(go.Scatter(x=g_df.index, y=g_df['SMA20'], line=dict(color='magenta', width=1), name='SMA 20'), row=1, col=1)
@@ -240,8 +237,6 @@ if all_data is not None and not all_data.empty:
         
         # 3. Katman: RSI (14) Alanı
         fig.add_trace(go.Scatter(x=g_df.index, y=g_df['RSI'], line=dict(color='orange', width=1.5), name='RSI (14)'), row=3, col=1)
-        fig.add_add_line = fig.add_hline(y=70, line_dash="dash", line_color="red", row=3, col=1)
-        fig.add_add_line2 = fig.add_hline(y=30, line_dash="dash", line_color="green", row=3, col=1)
         
         fig.update_layout(xaxis_rangeslider_visible=False, template="plotly_dark", height=700, margin=dict(t=20, b=20))
         st.plotly_chart(fig, use_container_width=True)
@@ -251,11 +246,10 @@ if all_data is not None and not all_data.empty:
         
         try:
             hisse_detay = yf.Ticker(f"{aktif_hisse}.IS")
-            haberler = hisse_detay.news[:3] # En güncel 3 kurumsal haberi/yorumu çeker
+            haberler = hisse_detay.news[:3]
             
             if haberler:
                 gc1, gc2 = st.columns([2, 1])
-                
                 with gc1:
                     st.write("📌 **Son Çıkan Piyasa Yorumları & Akış:**")
                     olumlu_skor = 0
@@ -263,19 +257,16 @@ if all_data is not None and not all_data.empty:
                         baslik = h.get('title', 'Haber Başlığı Bulunamadı')
                         kaynak = h.get('publisher', 'Finans Servisi')
                         st.caption(f"🔔 **{kaynak}**: {baslik}")
-                        # Basit kurumsal kelime tarama oylaması (Algoritma)
                         if any(w in baslik.lower() for w in ['up', 'growth', 'kar', 'kazanc', 'buy', 'yukselis', 'rekor', 'pozitif']):
                             olumlu_skor += 35
                         else:
                             olumlu_skor += 20
                 
                 with gc2:
-                    # İndikatör değerleri ve haber algısına göre dinamik güvenilirlik skoru üretme
                     temel_guven = 50
                     if h_row['Sinyal'] == "KESKİN AL 🚀": temel_guven += 25
                     if h_row['Hacim Gücü'] == "Yüksek 🔥": temel_guven += 15
                     if 45 <= h_row['RSI (14)'] <= 60: temel_guven += 10
-                    
                     final_guven = min(temel_guven + olumlu_skor // 3, 98)
                     
                     st.metric("🎯 Algoritmik Güvenilirlik Oranı", f"% {final_guven}")
