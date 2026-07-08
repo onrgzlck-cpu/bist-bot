@@ -55,7 +55,7 @@ TUM_HISSELER = hisse_listesini_yukle()
 @st.cache_data(ttl=OTOMATIK_YENILEME_SURESI)
 def komple_indikator_analizi(ticker):
     try:
-        df = yf.download(ticker, period="6mo", interval="1d", progress=False)
+        df = yf.download(ticker, period="5d", interval="15m", progress=False)
         if df.empty or len(df) < 30: return None
         if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.droplevel(1)
             
